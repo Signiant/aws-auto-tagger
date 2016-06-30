@@ -1,0 +1,296 @@
+{
+    "AWSTemplateFormatVersion" : "2010-09-09",
+    "Description"              : "",
+    "Metadata"                 : {
+        "AWS::CloudFormation::Interface" : {
+            "ParameterGroups" : [
+                {
+                    "Label" : {
+                        "default" : "Prerequisites"
+                    },
+                    "Parameters" : [
+                        "IsCloudTrailEnabled"
+                    ]
+                },
+                {
+                  "Label" : {
+                      "default" : "Configuration"
+                  },
+                  "Parameters" : [
+                    "emailSuffix",
+                    "emailTagName"
+                  ]
+                }
+            ],
+            "ParameterLabels" : {
+                "IsCloudTrailEnabled" : {
+                    "default" : "Is CloudTrail already enabled in this region? CloudTrail is a requirement for Cloudwatch Events. If not enabled, please enable CloudTrail before proceeding."
+                },
+                "emailSuffix": {
+                  "default" : "Email Address suffix"
+                },
+                "emailTagName" : {
+                  "default" : "Name to use for email address resource tag"
+                }
+            }
+        }
+    },
+    "Parameters"               : {
+        "IsCloudTrailEnabled" : {
+            "Description" : "Specify if CloudTrail is enabled in the current region",
+            "Type"        : "String",
+            "Default"     : "Yes",
+            "AllowedValues" : [
+                "Yes",
+                "No"
+            ]
+        },
+        "emailSuffix" : {
+            "Description" : "Email address suffix to append to the username",
+            "Type"        : "String",
+            "Default"     : "@signiant.com"
+        },
+        "emailTagName" :{
+          "Description" : "Tag name to use for email address on resources",
+          "Type"        : "String",
+          "Default"     : "signiant:email"
+        }
+    },
+    "Conditions"               : {
+        "CreateResources" : {
+            "Fn::Equals" : [
+                {
+                    "Ref" : "IsCloudTrailEnabled"
+                },
+                "Yes"
+            ]
+        }
+    },
+    "Resources"                : {
+        "S3EventRule" : {
+            "Type" : "AWS::Events::Rule",
+            "Condition" : "CreateResources",
+            "Properties" : {
+                "Description" : "Trigger a Lambda function anytime a new S3 bucket is created",
+                "EventPattern" : {
+                    "detail-type" : [
+                        "AWS API Call via CloudTrail"
+                    ],
+                    "detail"      : {
+                        "eventSource" : [
+                            "s3.amazonaws.com"
+                        ],
+                        "eventName"   : [
+                            "CreateBucket"
+                        ]
+                    }
+                },
+                "Name"         : "New-S3Resource-Event",
+                "State"        : "ENABLED",
+                "Targets"      : [
+                    {
+                        "Arn" : {
+                            "Ref" : "ProductionAlias"
+                        },
+                        "Id"  : "Production"
+                    }
+                ]
+            }
+        },
+        "CFAutoTag"    : {
+            "Type" : "AWS::Lambda::Function",
+            "Condition" : "CreateResources",
+            "Properties" : {
+                "Code" : {
+                    "ZipFile" : {
+                        "Fn::Join" : [
+                            "",
+                            [
+                                "from __future__ import print_function\n",
+                                "import json\n",
+                                "import boto3\n",
+                                "import logging\n",
+                                "import time\n",
+                                "import datetime\n",
+                                "\n",
+                                "logger = logging.getLogger()\n",
+                                "logger.setLevel(logging.INFO)\n",
+                                "\n",
+                                "def lambda_handler(event, context):\n",
+                                "    #logger.info('Event: ' + str(event))\n",
+                                "    #print('Received event: ' + json.dumps(event, indent=2))\n",
+                                "\n",
+                                "    try:\n",
+                                "        region = event['region']\n",
+                                "        detail = event['detail']\n",
+                                "        eventname = detail['eventName']\n",
+                                "        arn = detail['userIdentity']['arn']\n",
+                                "        principal = detail['userIdentity']['principalId']\n",
+                                "        userType = detail['userIdentity']['type']\n",
+                                "        s3BucketName = detail['requestParameters']['bucketName']\n",
+                                "\n",
+                                "        if userType == 'IAMUser':\n",
+                                "            user = detail['userIdentity']['userName']\n",
+                                "\n",
+                                "        else:\n",
+                                "            user = principal.split(':')[1]\n",
+                                "\n",
+                                "        emailSuffix = '", { "Ref" : "emailSuffix" } , "'\n",
+                                "        emailTagName = '", { "Ref" : "emailTagName" } , "'\n",
+                                "\n",
+                                "        emailAddr = user + emailSuffix\n",
+                                "\n",
+                                "        logger.info('principalId: ' + str(principal))\n",
+                                "        logger.info('region: ' + str(region))\n",
+                                "        logger.info('eventName: ' + str(eventname))\n",
+                                "        logger.info('detail: ' + str(detail))\n",
+                                "        logger.info('emailAddr: ' + str(emailAddr))\n",
+                                "        logger.info('S3BucketName: ' + str(s3BucketName))\n",
+                                "\n",
+                                "        s3 = boto3.resource('s3')\n",
+                                "        tagging = s3.BucketTagging(s3BucketName)\n",
+                                "\n",
+                                "        try:\n",
+                                "          tags = tagging.tag_set\n",
+                                "        except:\n",
+                                "          tags = []\n",
+                                "\n",
+                                "        logger.info('Existing Tags: ' + str(tags))\n",
+                                "\n",
+                                "        i = [el for el in tags if el['Key'] ==  emailTagName]\n",
+                                "        if len(i):\n",
+                                "          logger.info(emailTagName + ' tag already present - not adding')\n",
+                                "          # tag already present\n",
+                                "        else:\n",
+                                "          new_tag = {'Key': emailTagName, 'Value': emailAddr}\n",
+                                "          tags.append(new_tag)\n",
+                                "          logger.info('New Tags: ' + str(tags))\n",
+                                "\n",
+                                "          tagSet = {'TagSet' : tags}\n",
+                                "          tagging.put(Tagging=tagSet)\n",
+                                "\n",
+                                "        logger.info(' Remaining time (ms): ' + str(context.get_remaining_time_in_millis()) + '\\n')\n",
+                                "        return True\n",
+                                "    except Exception as e:\n",
+                                "        logger.error('Something went wrong: ' + str(e))\n",
+                                "        return False\n"
+                            ]
+                        ]
+                    }
+                },
+                "Description" : "This function tags S3 Buckets in response to Cloudwatch Events.",
+                "Handler"     : "index.lambda_handler",
+                "Role"        : {
+                    "Fn::GetAtt" : [
+                        "LambdaAutoTagRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime"     : "python2.7",
+                "Timeout"     : "60"
+            }
+        },
+        "StableVersion" : {
+            "Type" : "AWS::Lambda::Version",
+            "Condition" : "CreateResources",
+            "Properties" : {
+                "FunctionName" : {
+                    "Ref" : "CFAutoTag"
+                },
+                "Description"  : "Stable version"
+            }
+        },
+        "ProductionAlias" : {
+            "Type" : "AWS::Lambda::Alias",
+            "Condition" : "CreateResources",
+            "Properties" : {
+                "FunctionName" : {
+                    "Ref" : "CFAutoTag"
+                },
+                "FunctionVersion" : {
+                    "Fn::GetAtt" : [
+                        "StableVersion",
+                        "Version"
+                    ]
+                },
+                "Name"            : "PROD"
+            }
+        },
+        "PermissionForEventsToInvokeLambda" : {
+            "Type" : "AWS::Lambda::Permission",
+            "Properties" : {
+                "FunctionName" : {
+                    "Ref" : "ProductionAlias"
+                },
+                "Action"       : "lambda:InvokeFunction",
+                "Principal"    : "events.amazonaws.com",
+                "SourceArn"    : {
+                    "Fn::GetAtt" : [
+                        "S3EventRule",
+                        "Arn"
+                    ]
+                }
+            }
+        },
+        "LambdaAutoTagRole"                 : {
+            "Type" : "AWS::IAM::Role",
+            "Condition" : "CreateResources",
+            "Properties" : {
+                "AssumeRolePolicyDocument" : {
+                    "Version" : "2012-10-17",
+                    "Statement" : [
+                        {
+                            "Effect" : "Allow",
+                            "Principal" : {
+                                "Service" : [
+                                    "lambda.amazonaws.com"
+                                ]
+                            },
+                            "Action"    : [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Policies"                 : [
+                    {
+                        "PolicyName" : "LambdaGetLatestWindowsAmiIdPolicy",
+                        "PolicyDocument" : {
+                            "Version" : "2012-10-17",
+                            "Statement" : [
+                                {
+                                    "Sid" : "Stmt1458923097000",
+                                    "Effect" : "Allow",
+                                    "Action" : [
+                                        "cloudtrail:LookupEvents"
+                                    ],
+                                    "Resource" : [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Sid" : "Stmt1458923121000",
+                                    "Effect" : "Allow",
+                                    "Action" : [
+                                        "s3:ListAllMyBuckets",
+                                        "s3:PutBucketTagging",
+                                        "s3:GetBucketTagging",
+                                        "ec2:Describe*",
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource" : [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs"                  : {
+    }
+}
