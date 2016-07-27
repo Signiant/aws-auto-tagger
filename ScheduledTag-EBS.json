@@ -12,9 +12,12 @@
                 "Targets"      : [
                     {
                         "Arn" : {
-                            "Ref" : "ProductionAlias"
+                            "Fn::GetAtt" : [
+                                "CFTagEBS",
+                                "Arn"
+                            ]
                         },
-                        "Id"  : "Production"
+                        "Id"  : "ScheduledTagEBSFunction"
                     }
                 ]
             }
@@ -109,35 +112,14 @@
                 "Timeout"     : "300"
             }
         },
-        "StableVersion" : {
-            "Type" : "AWS::Lambda::Version",
-            "Properties" : {
-                "FunctionName" : {
-                    "Ref" : "CFTagEBS"
-                },
-                "Description"  : "Stable version"
-            }
-        },
-        "ProductionAlias" : {
-            "Type" : "AWS::Lambda::Alias",
-            "Properties" : {
-                "FunctionName" : {
-                    "Ref" : "CFTagEBS"
-                },
-                "FunctionVersion" : {
-                    "Fn::GetAtt" : [
-                        "StableVersion",
-                        "Version"
-                    ]
-                },
-                "Name"            : "PROD"
-            }
-        },
         "PermissionForEventsToInvokeLambda" : {
             "Type" : "AWS::Lambda::Permission",
             "Properties" : {
                 "FunctionName" : {
-                    "Ref" : "ProductionAlias"
+                    "Fn::GetAtt": [
+                        "CFTagEBS",
+                        "Arn"
+                    ]
                 },
                 "Action"       : "lambda:InvokeFunction",
                 "Principal"    : "events.amazonaws.com",

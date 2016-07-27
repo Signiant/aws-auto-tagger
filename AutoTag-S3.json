@@ -90,9 +90,12 @@
                 "Targets"      : [
                     {
                         "Arn" : {
-                            "Ref" : "ProductionAlias"
+                            "Fn::GetAtt": [
+                                "CFAutoTag",
+                                "Arn"
+                            ]
                         },
-                        "Id"  : "Production"
+                        "Id"  : "AutoTagS3Function"
                     }
                 ]
             }
@@ -192,37 +195,14 @@
                 "Timeout"     : "60"
             }
         },
-        "StableVersion" : {
-            "Type" : "AWS::Lambda::Version",
-            "Condition" : "CreateResources",
-            "Properties" : {
-                "FunctionName" : {
-                    "Ref" : "CFAutoTag"
-                },
-                "Description"  : "Stable version"
-            }
-        },
-        "ProductionAlias" : {
-            "Type" : "AWS::Lambda::Alias",
-            "Condition" : "CreateResources",
-            "Properties" : {
-                "FunctionName" : {
-                    "Ref" : "CFAutoTag"
-                },
-                "FunctionVersion" : {
-                    "Fn::GetAtt" : [
-                        "StableVersion",
-                        "Version"
-                    ]
-                },
-                "Name"            : "PROD"
-            }
-        },
         "PermissionForEventsToInvokeLambda" : {
             "Type" : "AWS::Lambda::Permission",
             "Properties" : {
                 "FunctionName" : {
-                    "Ref" : "ProductionAlias"
+                    "Fn::GetAtt": [
+                        "CFAutoTag",
+                        "Arn"
+                    ]
                 },
                 "Action"       : "lambda:InvokeFunction",
                 "Principal"    : "events.amazonaws.com",
