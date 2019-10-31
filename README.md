@@ -4,7 +4,7 @@ Auto tags AWS EC2,EBS and S3 resourcces with an email address
 This is essentially a fork of the excellent solution detailed in Alessandro Martini's [AWS blog post](https://blogs.aws.amazon.com/security/post/Tx150Z810KS4ZEC/How-to-Automatically-Tag-Amazon-EC2-Resources-in-Response-to-API-Events) with just a modification to add a tag for an email address.
 
 # Purpose
-Adds tags to EC2 instance, EBS volumes or S3 buckets identifying who has created the resource by their AWS login.  It also takes the AWS login name and appends an email suffix (ie. @foo.com) in otder to generate a tag with an email address of the resource creator.  This is helpful for other tools that send email notifications to the owner (a janitor for example)
+Adds tags to EC2 instance, EBS volumes or S3 buckets identifying who has created the resource by their AWS login.  It also takes the AWS login name and appends an email suffix (ie. @foo.com) in order to generate a tag with an email address of the resource creator.  This is helpful for other tools that send email notifications to the owner (a janitor for example)
 
 # Usage
 
